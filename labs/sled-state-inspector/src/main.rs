@@ -2,7 +2,7 @@ use std::{fmt::Debug, sync::Arc};
 
 use atty::Stream;
 use clap::{Arg, ArgMatches, Command as Argparse};
-use futures::executor::block_on;
+use futures::stream::TryStreamExt;
 use matrix_sdk_base::{RoomInfo, StateStore};
 use matrix_sdk_sled::SledStateStore;
 use ruma::{events::StateEventType, OwnedRoomId, OwnedUserId, RoomId};
@@ -17,12 +17,12 @@ use rustyline::{
 use rustyline_derive::Helper;
 use serde::Serialize;
 use syntect::{
-    dumps::from_binary,
     easy::HighlightLines,
     highlighting::{Style, ThemeSet},
     parsing::SyntaxSet,
     util::{as_24_bit_terminal_escaped, LinesWithEndings},
 };
+use tokio::runtime::{Handle, Runtime};
 
 #[derive(Clone)]
 struct Inspector {
@@ -32,6 +32,7 @@ struct Inspector {
 
 #[derive(Helper)]
 struct InspectorHelper {
+    runtime: Handle,
     store: Arc<SledStateStore>,
     _highlighter: MatchingBracketHighlighter,
     _validator: MatchingBracketValidator,
@@ -54,9 +55,10 @@ impl InspectorHelper {
         "m.room.topic",
     ];
 
-    fn new(store: Arc<SledStateStore>) -> Self {
+    fn new(runtime: Handle, store: Arc<SledStateStore>) -> Self {
         Self {
             store,
+            runtime,
             _highlighter: MatchingBracketHighlighter::new(),
             _validator: MatchingBracketValidator::new(),
             _hinter: HistoryHinter {},
@@ -72,8 +74,9 @@ impl InspectorHelper {
     }
 
     fn complete_rooms(&self, arg: Option<&&str>) -> Vec<Pair> {
-        let rooms: Vec<RoomInfo> =
-            block_on(async { StateStore::get_room_infos(&*self.store).await.unwrap() });
+        let rooms: Vec<RoomInfo> = self
+            .runtime
+            .block_on(async { StateStore::get_room_infos(&*self.store).await.unwrap() });
 
         rooms
             .into_iter()
@@ -162,8 +165,8 @@ struct Printer {
 
 impl Printer {
     fn new(json: bool, color: bool) -> Self {
-        let syntax_set: SyntaxSet = from_binary(include_bytes!("../syntaxes.bin"));
-        let themes: ThemeSet = from_binary(include_bytes!("../themes.bin"));
+        let syntax_set = SyntaxSet::load_defaults_newlines();
+        let themes: ThemeSet = ThemeSet::load_defaults();
 
         Self { ps: syntax_set.into(), ts: themes.into(), json, color }
     }
@@ -182,7 +185,7 @@ impl Printer {
         };
 
         if self.color {
-            let mut h = HighlightLines::new(syntax, &self.ts.themes["Forest Night"]);
+            let mut h = HighlightLines::new(syntax, &self.ts.themes["base16-ocean.dark"]);
 
             for line in LinesWithEndings::from(&data) {
                 let ranges: Vec<(Style, &str)> =
@@ -242,7 +245,8 @@ impl Inspector {
     }
 
     async fn list_rooms(&self) {
-        let rooms: Vec<RoomInfo> = StateStore::get_room_infos(&*self.store).await.unwrap();
+        let rooms: Vec<RoomInfo> =
+            self.store.get_room_infos().await.unwrap().try_collect().await.unwrap();
         self.printer.pretty_print_struct(&rooms);
     }
 
@@ -253,7 +257,7 @@ impl Inspector {
 
     async fn get_profiles(&self, room_id: OwnedRoomId) {
         let joined: Vec<OwnedUserId> =
-            StateStore::get_joined_user_ids(&*self.store, &room_id).await.unwrap();
+            self.store.get_joined_user_ids(&room_id).await.unwrap().try_collect().await.unwrap();
 
         for member in joined {
             let event = self.store.get_profile(&room_id, &member).await.unwrap();
@@ -324,6 +328,8 @@ impl Inspector {
 }
 
 fn main() {
+    let runtime = Runtime::new().expect("We should be able to create a new tokio runtime");
+
     let argparse = Argparse::new("state-inspector")
         .disable_version_flag(true)
         .arg(Arg::new("database").required(true))
@@ -351,7 +357,9 @@ fn main() {
             .edit_mode(EditMode::Emacs)
             .build();
 
-        let helper = InspectorHelper::new(inspector.store.clone());
+        let handle = runtime.handle().to_owned();
+
+        let helper = InspectorHelper::new(handle, inspector.store.clone());
 
         let mut rl =
             Editor::<InspectorHelper>::with_config(config).expect("Failed to create Editor");
@@ -359,9 +367,9 @@ fn main() {
 
         while let Ok(input) = rl.readline(">> ") {
             rl.add_history_entry(input.as_str());
-            block_on(inspector.parse_and_run(input.as_str()));
+            runtime.block_on(inspector.parse_and_run(input.as_str()));
         }
     } else {
-        block_on(inspector.run(matches));
+        runtime.block_on(inspector.run(matches));
     }
 }

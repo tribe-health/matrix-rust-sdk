@@ -11,7 +11,8 @@ test = false
 [dependencies]
 atty = "0.2.14"
 clap = "3.2.4"
-futures = { version = "0.3.21", default-features = false, features = ["executor"] }
+tokio = { version = "1.21.0", features = [ "rt-multi-thread", "macros" ] }
+futures = { version = "0.3.24", default-features = false, features = [] }
 matrix-sdk-base = { path = "../../crates/matrix-sdk-base", version = "0.5.0" }
 matrix-sdk-sled = { path = "../../crates/matrix-sdk-sled", version = "0.1.0" }
 ruma = { git = "https://github.com/ruma/ruma", rev = "c745d3baf720b38a254e640a526717864e87a065" }
@@ -19,4 +20,4 @@ rustyline = "10.0.0"
 rustyline-derive = "0.7.0"
 serde = "1.0.136"
 serde_json = "1.0.79"
-syntect = { version = "5.0.0", default-features = false, features = ["dump-load", "parsing", "regex-fancy"] }
+syntect = { version = "5.0.0", default-features = false, features = ["dump-load", "parsing", "regex-fancy", "default-syntaxes", "default-themes"] }
