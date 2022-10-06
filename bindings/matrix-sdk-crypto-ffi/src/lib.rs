@@ -360,7 +360,7 @@ pub struct DecryptedEvent {
 
 /// Struct representing the state of our private cross signing keys, it shows
 /// which private cross signing keys we have locally stored.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, uniffi::Record)]
 pub struct CrossSigningStatus {
     /// Do we have the master key.
     pub has_master: bool,
@@ -468,7 +468,9 @@ fn parse_user_id(user_id: &str) -> Result<OwnedUserId, CryptoStoreError> {
 }
 
 mod uniffi_types {
-    pub use crate::{backup_recovery_key::BackupRecoveryKey, machine::OlmMachine};
+    pub use crate::{
+        backup_recovery_key::BackupRecoveryKey, machine::OlmMachine, CrossSigningStatus,
+    };
 }
 
 #[allow(warnings)]
