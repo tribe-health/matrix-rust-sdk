@@ -255,12 +255,18 @@ fn update_fully_read_item(
     let Some(fully_read_event) = fully_read_event else { return };
     let old_idx = find_fully_read(items_lock);
     let new_idx = find_event(items_lock, fully_read_event).map(|(idx, _)| idx + 1);
+    warn!("update_fully_read_item: {old_idx:?}, {new_idx:?} in {}", items_lock.len());
     match (old_idx, new_idx) {
         (None, None) => {}
         (None, Some(idx)) => {
             *fully_read_event_in_timeline = true;
             let item = TimelineItem::Virtual(VirtualTimelineItem::ReadMarker);
-            items_lock.insert_cloned(idx, item.into());
+            warn!("insert");
+            if idx >= items_lock.len() {
+                items_lock.push_cloned(item.into());
+            } else {
+                items_lock.insert_cloned(idx, item.into());
+            }
         }
         (Some(_), None) => {
             // Keep the current position of the read marker, hopefully we
@@ -268,7 +274,13 @@ fn update_fully_read_item(
             *fully_read_event_in_timeline = false;
         }
         (Some(from), Some(to)) => {
-            items_lock.move_from_to(from, to);
+            warn!("move!");
+            if to >= items_lock.len() {
+                let item = items_lock.remove(from);
+                items_lock.push_cloned(item);
+            } else {
+                items_lock.move_from_to(from, to);
+            }
         }
     }
 }
@@ -610,7 +622,7 @@ impl<'a, 'i> TimelineEventHandler<'a, 'i> {
                 }
 
                 if let Some((idx, old_item)) = find_event(self.timeline_items, event_id) {
-                    warn!(
+                    info!(
                         ?item,
                         ?old_item,
                         raw = raw_event.json().get(),
