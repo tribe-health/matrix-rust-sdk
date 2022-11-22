@@ -161,7 +161,7 @@ impl From<&SlidingSyncRoom> for FrozenSlidingSyncRoom {
     }
 }
 
-impl  SlidingSyncRoom {
+impl SlidingSyncRoom {
     fn from_frozen(val: FrozenSlidingSyncRoom, client: Client) -> Self {
         let FrozenSlidingSyncRoom { room_id, inner, prev_batch, timeline } = val;
         SlidingSyncRoom {
@@ -359,7 +359,10 @@ impl SlidingSyncConfig {
                     }
                 }
 
-                f.rooms.into_iter().map(|(k, v)| (k, SlidingSyncRoom::from_frozen(v, client.clone()))).collect()
+                f.rooms
+                    .into_iter()
+                    .map(|(k, v)| (k, SlidingSyncRoom::from_frozen(v, client.clone())))
+                    .collect()
             } else {
                 Default::default()
             }
@@ -908,6 +911,9 @@ impl From<&SlidingSyncView> for FrozenSlidingSyncView {
 impl SlidingSyncView {
     fn set_from_cold(&mut self, v: FrozenSlidingSyncView) {
         let FrozenSlidingSyncView { rooms_count, rooms_list } = v;
+        if *self.sync_mode.lock_ref() == SlidingSyncMode::FullSync {
+            self.state.set(SlidingSyncState::Preload);
+        }
         self.rooms_count.replace(rooms_count);
         self.rooms_list.lock_mut().replace_cloned(rooms_list);
     }
