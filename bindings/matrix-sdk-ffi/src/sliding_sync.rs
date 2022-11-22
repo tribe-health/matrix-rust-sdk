@@ -133,8 +133,9 @@ impl SlidingSyncRoom {
 
     #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn latest_room_message(&self) -> Option<Arc<EventTimelineItem>> {
-        let item = self.inner.timeline().latest()?.as_event()?.to_owned();
-        Some(Arc::new(EventTimelineItem(item)))
+        let item = self.inner.timeline().latest_event();
+        tracing::trace!(room_id = self.room_id(), "latest msg is {:?}", item);
+        Some(Arc::new(EventTimelineItem(item?)))
     }
 }
 
