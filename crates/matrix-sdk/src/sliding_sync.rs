@@ -219,11 +219,11 @@ impl SlidingSyncRoom {
 
     /// `Timeline` of this room
     #[cfg(feature = "experimental-timeline")]
-    pub async fn timeline(&self) -> Timeline {
+    pub fn timeline(&self) -> Timeline {
         let current_timeline = self.timeline.lock_ref().to_vec();
         let prev_batch = self.prev_batch.lock_ref().clone();
         let room = self.client.get_room(&self.room_id).unwrap();
-        Timeline::with_events(&room, prev_batch, current_timeline).await
+        Timeline::with_events(&room, prev_batch, current_timeline)
     }
 
     /// This rooms name as calculated by the server, if any

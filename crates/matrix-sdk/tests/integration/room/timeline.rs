@@ -42,7 +42,7 @@ async fn edit() {
     server.reset().await;
 
     let room = client.get_room(room_id).unwrap();
-    let timeline = room.timeline().await;
+    let timeline = room.timeline();
     let mut timeline_stream = timeline.signal().to_stream();
 
     ev_builder.add_joined_room(JoinedRoomBuilder::new(room_id).add_timeline_event(
@@ -151,7 +151,7 @@ async fn echo() {
     server.reset().await;
 
     let room = client.get_room(room_id).unwrap();
-    let timeline = Arc::new(room.timeline().await);
+    let timeline = Arc::new(room.timeline());
     let mut timeline_stream = timeline.signal().to_stream();
 
     let event_id = event_id!("$wWgymRfo7ri1uQx0NXO40vLJ");
@@ -245,7 +245,7 @@ async fn back_pagination() {
     server.reset().await;
 
     let room = client.get_room(room_id).unwrap();
-    let timeline = Arc::new(room.timeline().await);
+    let timeline = Arc::new(room.timeline());
     let mut timeline_stream = timeline.signal().to_stream();
 
     Mock::given(method("GET"))
@@ -296,7 +296,7 @@ async fn reaction() {
     server.reset().await;
 
     let room = client.get_room(room_id).unwrap();
-    let timeline = room.timeline().await;
+    let timeline = room.timeline();
     let mut timeline_stream = timeline.signal().to_stream();
 
     ev_builder.add_joined_room(
@@ -388,7 +388,7 @@ async fn redacted_message() {
     server.reset().await;
 
     let room = client.get_room(room_id).unwrap();
-    let timeline = room.timeline().await;
+    let timeline = room.timeline();
     let mut timeline_stream = timeline.signal().to_stream();
 
     ev_builder.add_joined_room(
@@ -445,7 +445,7 @@ async fn read_marker() {
     server.reset().await;
 
     let room = client.get_room(room_id).unwrap();
-    let timeline = room.timeline().await;
+    let timeline = room.timeline();
     let mut timeline_stream = timeline.signal().to_stream();
 
     ev_builder.add_joined_room(JoinedRoomBuilder::new(room_id).add_timeline_event(

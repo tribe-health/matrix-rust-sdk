@@ -14,13 +14,16 @@
 
 #[cfg(feature = "e2e-encryption")]
 use std::collections::BTreeSet;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, MutexGuard},
+};
 
 use futures_signals::signal_vec::MutableVecLockMut;
 use indexmap::map::Entry;
 #[cfg(feature = "e2e-encryption")]
 use matrix_sdk_base::crypto::OlmMachine;
-use matrix_sdk_base::{deserialized_responses::EncryptionInfo, locks::MutexGuard};
+use matrix_sdk_base::deserialized_responses::EncryptionInfo;
 #[cfg(feature = "e2e-encryption")]
 use ruma::RoomId;
 use ruma::{
@@ -50,13 +53,13 @@ use super::{
 };
 
 impl TimelineInner {
-    pub(super) async fn handle_live_event(
+    pub(super) fn handle_live_event(
         &self,
         raw: Raw<AnySyncTimelineEvent>,
         encryption_info: Option<EncryptionInfo>,
         own_user_id: &UserId,
     ) {
-        let mut timeline_meta = self.metadata.lock().await;
+        let mut timeline_meta = self.metadata.lock().unwrap();
         handle_remote_event(
             raw,
             own_user_id,
@@ -67,7 +70,7 @@ impl TimelineInner {
         );
     }
 
-    pub(super) async fn handle_local_event(
+    pub(super) fn handle_local_event(
         &self,
         txn_id: OwnedTransactionId,
         content: AnyMessageLikeEventContent,
@@ -84,19 +87,19 @@ impl TimelineInner {
         let flow = Flow::Local { txn_id };
         let kind = TimelineEventKind::Message { content };
 
-        let mut timeline_meta = self.metadata.lock().await;
+        let mut timeline_meta = self.metadata.lock().unwrap();
         let mut timeline_items = self.items.lock_mut();
         TimelineEventHandler::new(event_meta, flow, &mut timeline_items, &mut timeline_meta)
             .handle_event(kind);
     }
 
-    pub(super) async fn handle_back_paginated_event(
+    pub(super) fn handle_back_paginated_event(
         &self,
         raw: Raw<AnySyncTimelineEvent>,
         encryption_info: Option<EncryptionInfo>,
         own_user_id: &UserId,
     ) {
-        let mut metadata_lock = self.metadata.lock().await;
+        let mut metadata_lock = self.metadata.lock().unwrap();
         handle_remote_event(
             raw,
             own_user_id,
@@ -107,7 +110,7 @@ impl TimelineInner {
         );
     }
 
-    pub(super) async fn handle_fully_read(&self, raw: Raw<FullyReadEvent>) {
+    pub(super) fn handle_fully_read(&self, raw: Raw<FullyReadEvent>) {
         let fully_read_event = match raw.deserialize() {
             Ok(ev) => ev.content.event_id,
             Err(error) => {
@@ -116,11 +119,11 @@ impl TimelineInner {
             }
         };
 
-        self.set_fully_read_event(fully_read_event).await;
+        self.set_fully_read_event(fully_read_event);
     }
 
-    pub(super) async fn set_fully_read_event(&self, fully_read_event_id: OwnedEventId) {
-        let mut metadata_lock = self.metadata.lock().await;
+    pub(super) fn set_fully_read_event(&self, fully_read_event_id: OwnedEventId) {
+        let mut metadata_lock = self.metadata.lock().unwrap();
 
         if metadata_lock.fully_read_event.as_ref().map_or(false, |id| *id == fully_read_event_id) {
             return;
@@ -182,7 +185,6 @@ impl TimelineInner {
             return;
         }
 
-        let mut metadata_lock = self.metadata.lock().await;
         for (idx, event_id, session_id, utd) in utds_for_session.iter().rev() {
             let event = match olm_machine.decrypt_room_event(utd.cast_ref(), room_id).await {
                 Ok(ev) => ev,
@@ -195,11 +197,7 @@ impl TimelineInner {
                 }
             };
 
-            // Because metadata is always locked before we attempt to lock the
-            // items, this will never be contended.
-            // Because there is an `.await` in this loop, we have to re-lock
-            // this mutex every iteration because holding it across `.await`
-            // makes the future `!Send`, which makes it not event-handler-safe.
+            let mut metadata_lock = self.metadata.lock().unwrap();
             let mut items_lock = self.items.lock_mut();
             handle_remote_event(
                 event.event.cast(),

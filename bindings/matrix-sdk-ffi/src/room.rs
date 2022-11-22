@@ -134,8 +134,7 @@ impl Room {
     pub fn add_timeline_listener(&self, listener: Box<dyn TimelineListener>) {
         let room = self.room.clone();
 
-        let timeline = RUNTIME.block_on(async move { room.timeline().await });
-
+        let timeline = room.timeline();
         let timeline_signal =
             self.timeline.write().unwrap().get_or_insert_with(|| Arc::new(timeline)).signal();
 

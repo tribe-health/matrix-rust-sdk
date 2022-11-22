@@ -261,12 +261,12 @@ impl TestTimeline {
             unsigned: Default::default(),
         };
         let raw = Raw::new(&ev).unwrap().cast();
-        self.inner.handle_live_event(raw, None, &self.own_user_id).await;
+        self.inner.handle_live_event(raw, None, &self.own_user_id);
     }
 
     async fn handle_live_custom_event(&self, event: JsonValue) {
         let raw = Raw::new(&event).unwrap().cast();
-        self.inner.handle_live_event(raw, None, &self.own_user_id).await;
+        self.inner.handle_live_event(raw, None, &self.own_user_id);
     }
 
     async fn handle_live_redaction(&self, sender: &UserId, redacts: &EventId) {
@@ -279,7 +279,7 @@ impl TestTimeline {
             unsigned: Default::default(),
         };
         let raw = Raw::new(&ev).unwrap().cast();
-        self.inner.handle_live_event(raw, None, &self.own_user_id).await;
+        self.inner.handle_live_event(raw, None, &self.own_user_id);
     }
 }
 

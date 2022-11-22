@@ -23,16 +23,10 @@ use std::{
 
 use futures_core::Stream;
 use futures_signals::signal_vec::{MutableVec, SignalVec, SignalVecExt, VecDiff};
-use matrix_sdk_base::{
-    deserialized_responses::{EncryptionInfo, SyncTimelineEvent},
-    locks::Mutex,
-};
+use matrix_sdk_base::deserialized_responses::{EncryptionInfo, SyncTimelineEvent};
 use ruma::{
     assign,
-    events::{
-        fully_read::FullyReadEventContent, reaction::Relation as AnnotationRelation,
-        AnyMessageLikeEventContent,
-    },
+    events::{reaction::Relation as AnnotationRelation, AnyMessageLikeEventContent},
     OwnedEventId, OwnedUserId, TransactionId, UInt,
 };
 use tracing::{error, instrument, warn};
@@ -78,7 +72,7 @@ pub struct Timeline {
 #[derive(Clone, Debug, Default)]
 struct TimelineInner {
     items: MutableVec<Arc<TimelineItem>>,
-    metadata: Arc<Mutex<TimelineInnerMetadata>>,
+    metadata: Arc<StdMutex<TimelineInnerMetadata>>,
 }
 
 /// Non-signalling parts of `TimelineInner`.
@@ -91,11 +85,11 @@ struct TimelineInnerMetadata {
 }
 
 impl Timeline {
-    pub(super) async fn new(room: &room::Common) -> Self {
-        Self::with_events(room, None, Vec::new()).await
+    pub(super) fn new(room: &room::Common) -> Self {
+        Self::with_events(room, None, Vec::new())
     }
 
-    pub(crate) async fn with_events(
+    pub(crate) fn with_events(
         room: &room::Common,
         prev_token: Option<String>,
         events: Vec<SyncTimelineEvent>,
@@ -104,14 +98,12 @@ impl Timeline {
         let own_user_id = room.own_user_id();
 
         for ev in events.into_iter().rev() {
-            inner
-                .handle_back_paginated_event(ev.event.cast(), ev.encryption_info, own_user_id)
-                .await;
+            inner.handle_back_paginated_event(ev.event.cast(), ev.encryption_info, own_user_id);
         }
 
-        match room.account_data_static::<FullyReadEventContent>().await {
+        /* match room.account_data_static::<FullyReadEventContent>().await {
             Ok(Some(fully_read)) => match fully_read.deserialize() {
-                Ok(fully_read) => inner.set_fully_read_event(fully_read.content.event_id).await,
+                Ok(fully_read) => inner.set_fully_read_event(fully_read.content.event_id),
                 Err(error) => {
                     error!(?error, "Failed to deserialize `m.fully_read` account data")
                 }
@@ -120,14 +112,14 @@ impl Timeline {
                 error!(?error, "Failed to get `m.fully_read` account data from the store")
             }
             _ => {}
-        }
+        } */
 
         let timeline_event_handle = room.add_event_handler({
             let inner = inner.clone();
             move |event, encryption_info: Option<EncryptionInfo>, room: Room| {
                 let inner = inner.clone();
                 async move {
-                    inner.handle_live_event(event, encryption_info, room.own_user_id()).await;
+                    inner.handle_live_event(event, encryption_info, room.own_user_id());
                 }
             }
         });
@@ -139,7 +131,7 @@ impl Timeline {
             move |event| {
                 let inner = inner.clone();
                 async move {
-                    inner.handle_fully_read(event).await;
+                    inner.handle_fully_read(event);
                 }
             }
         });
@@ -220,13 +212,11 @@ impl Timeline {
 
         let own_user_id = self.room.own_user_id();
         for room_ev in messages.chunk {
-            self.inner
-                .handle_back_paginated_event(
-                    room_ev.event.cast(),
-                    room_ev.encryption_info,
-                    own_user_id,
-                )
-                .await;
+            self.inner.handle_back_paginated_event(
+                room_ev.event.cast(),
+                room_ev.encryption_info,
+                own_user_id,
+            );
         }
 
         Ok(outcome)
@@ -329,9 +319,7 @@ impl Timeline {
         txn_id: Option<&TransactionId>,
     ) -> Result<()> {
         let txn_id = txn_id.map_or_else(TransactionId::new, ToOwned::to_owned);
-        self.inner
-            .handle_local_event(txn_id.clone(), content.clone(), self.room.own_user_id())
-            .await;
+        self.inner.handle_local_event(txn_id.clone(), content.clone(), self.room.own_user_id());
 
         // If this room isn't actually in joined state, we'll get a server error.
         // Not ideal, but works for now.

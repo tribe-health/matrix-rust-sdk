@@ -267,8 +267,8 @@ impl Common {
     /// like edits and reactions as updates of existing items rather than new
     /// independent events.
     #[cfg(feature = "experimental-timeline")]
-    pub async fn timeline(&self) -> Timeline {
-        Timeline::new(self).await
+    pub fn timeline(&self) -> Timeline {
+        Timeline::new(self)
     }
 
     /// Fetch the event with the given `EventId` in this room.

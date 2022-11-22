@@ -133,17 +133,14 @@ impl SlidingSyncRoom {
 
     #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn latest_room_message(&self) -> Option<Arc<EventTimelineItem>> {
-        RUNTIME.block_on(async {
-            let item = self.inner.timeline().await.latest()?.as_event()?.to_owned();
-            Some(Arc::new(EventTimelineItem(item)))
-        })
+        let item = self.inner.timeline().latest()?.as_event()?.to_owned();
+        Some(Arc::new(EventTimelineItem(item)))
     }
 }
 
 impl SlidingSyncRoom {
     pub fn add_timeline_listener(&self, listener: Box<dyn TimelineListener>) {
-        let timeline = RUNTIME.block_on(async move { self.inner.timeline().await });
-
+        let timeline = self.inner.timeline();
         let timeline_signal =
             self.timeline.write().unwrap().get_or_insert_with(|| Arc::new(timeline)).signal();
 
