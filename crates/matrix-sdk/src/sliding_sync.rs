@@ -219,11 +219,15 @@ impl SlidingSyncRoom {
 
     /// `Timeline` of this room
     #[cfg(feature = "experimental-timeline")]
-    pub fn timeline(&self) -> Timeline {
+    pub fn timeline(&self) -> Option<Timeline> {
         let current_timeline = self.timeline.lock_ref().to_vec();
         let prev_batch = self.prev_batch.lock_ref().clone();
-        let room = self.client.get_room(&self.room_id).unwrap();
-        Timeline::with_events(&room, prev_batch, current_timeline)
+        if let Some(room) = self.client.get_room(&self.room_id) {
+            Some(Timeline::with_events(&room, prev_batch, current_timeline))
+        } else {
+            tracing::warn!(room_id=?self.room_id, "Room not found in client. Can't provide a timeline for it");
+            None
+        }
     }
 
     /// This rooms name as calculated by the server, if any

@@ -133,15 +133,21 @@ impl SlidingSyncRoom {
 
     #[allow(clippy::significant_drop_in_scrutinee)]
     pub fn latest_room_message(&self) -> Option<Arc<EventTimelineItem>> {
-        let item = self.inner.timeline().latest_event();
+        let item = self.inner.timeline()?.latest_event();
         tracing::trace!(room_id = self.room_id(), "latest msg is {:?}", item);
         Some(Arc::new(EventTimelineItem(item?)))
     }
 }
 
 impl SlidingSyncRoom {
-    pub fn add_timeline_listener(&self, listener: Box<dyn TimelineListener>) {
-        let timeline = self.inner.timeline();
+    pub fn add_timeline_listener(&self, listener: Box<dyn TimelineListener>) -> Option<bool> {
+        let timeline = if let Some(timeline) = self.inner.timeline() {
+            timeline
+        } else {
+            tracing::warn!(room_id=?self.room_id(), "Could set timeline listener: no timeline found.");
+            return None
+        };
+
         let timeline_signal =
             self.timeline.write().unwrap().get_or_insert_with(|| Arc::new(timeline)).signal();
 
@@ -157,6 +163,7 @@ impl SlidingSyncRoom {
                 }
             }
         }));
+        Some(true)
     }
 }
 
