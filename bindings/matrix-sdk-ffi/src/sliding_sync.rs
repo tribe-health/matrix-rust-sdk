@@ -140,7 +140,7 @@ impl SlidingSyncRoom {
 }
 
 impl SlidingSyncRoom {
-    pub fn add_timeline_listener(&self, listener: Box<dyn TimelineListener>) -> Option<bool> {
+    pub fn add_timeline_listener(&self, listener: Box<dyn TimelineListener>) -> Option<Arc<StoppableSpawn>> {
         let timeline = if let Some(timeline) = self.inner.timeline() {
             timeline
         } else {
@@ -152,7 +152,7 @@ impl SlidingSyncRoom {
             self.timeline.write().unwrap().get_or_insert_with(|| Arc::new(timeline)).signal();
 
         let listener: Arc<dyn TimelineListener> = listener.into();
-        RUNTIME.spawn(timeline_signal.for_each(move |diff| {
+        Some(Arc::new(StoppableSpawn::with_handle(RUNTIME.spawn(timeline_signal.for_each(move |diff| {
             let listener = listener.clone();
             let fut = RUNTIME
                 .spawn_blocking(move || listener.on_update(Arc::new(TimelineDiff::new(diff))));
@@ -162,8 +162,7 @@ impl SlidingSyncRoom {
                     error!("Timeline listener error: {e}");
                 }
             }
-        }));
-        Some(true)
+        })))))
     }
 }
 
