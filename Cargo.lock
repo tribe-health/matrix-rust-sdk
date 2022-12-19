@@ -2534,12 +2534,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matches"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3e378b66a060d48947b590737b30a1be76706c8dd7b8ba0f2fe3989c68a853f"
-
-[[package]]
 name = "matchit"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2573,7 +2567,6 @@ dependencies = [
  "hyper",
  "image 0.24.5",
  "indexmap",
- "matches",
  "matrix-sdk-base",
  "matrix-sdk-common",
  "matrix-sdk-indexeddb",
@@ -2680,6 +2673,7 @@ version = "0.6.0"
 dependencies = [
  "aes",
  "anyhow",
+ "assert_matches",
  "async-trait",
  "atomic",
  "base64",
@@ -2696,7 +2690,6 @@ dependencies = [
  "hmac",
  "http",
  "indoc",
- "matches",
  "matrix-sdk-common",
  "matrix-sdk-qrcode",
  "matrix-sdk-test",
