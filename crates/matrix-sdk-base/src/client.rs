@@ -50,6 +50,8 @@ use ruma::{
     serde::Raw,
     MilliSecondsSinceUnixEpoch, OwnedUserId, RoomId, UInt, UserId,
 };
+#[cfg(feature = "e2e-encryption")]
+use tracing::instrument;
 use tracing::{debug, info, trace, warn};
 
 #[cfg(feature = "e2e-encryption")]
@@ -63,7 +65,7 @@ use crate::{
         StoreConfig,
     },
     sync::{JoinedRoom, LeftRoom, Rooms, SyncResponse, Timeline},
-    Session, SessionMeta, SessionTokens, StateStore,
+    Session, SessionMeta, SessionTokens, StateStore, StoreError,
 };
 
 /// A no IO Client implementation.
@@ -240,19 +242,22 @@ impl BaseClient {
     }
 
     #[cfg(feature = "e2e-encryption")]
+    #[instrument(skip(self, event), fields(event_id = %event.event_id()))]
     async fn handle_unencrypted_verification_event(
         &self,
         event: &AnySyncMessageLikeEvent,
         room_id: &RoomId,
-    ) -> Result<()> {
+    ) {
         if let Some(olm) = self.olm_machine() {
-            olm.receive_unencrypted_verification_event(
-                &event.clone().into_full_event(room_id.to_owned()),
-            )
-            .await?;
+            let result = olm
+                .receive_unencrypted_verification_event(
+                    &event.clone().into_full_event(room_id.to_owned()),
+                )
+                .await;
+            if let Err(e) = result {
+                warn!("Failed to handle verification event: {e}");
+            }
         }
-
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -267,11 +272,11 @@ impl BaseClient {
         room_info: &mut RoomInfo,
         changes: &mut StateChanges,
         ambiguity_cache: &mut AmbiguityCache,
-    ) -> Result<Timeline> {
+    ) -> Timeline {
         let room_id = room.room_id();
         let user_id = room.own_user_id();
         let mut timeline = Timeline::new(limited, prev_batch);
-        let mut push_context = self.get_push_room_context(room, room_info, changes).await?;
+        let mut push_context = self.get_push_room_context(room, room_info, changes).await;
 
         for event in events {
             #[allow(unused_mut)]
@@ -283,7 +288,7 @@ impl BaseClient {
                     match &e {
                         AnySyncTimelineEvent::State(s) => match s {
                             AnySyncStateEvent::RoomMember(member) => {
-                                ambiguity_cache.handle_event(changes, room_id, member).await?;
+                                ambiguity_cache.handle_event(changes, room_id, member).await;
 
                                 match member.membership() {
                                     MembershipState::Join | MembershipState::Invite => {
@@ -353,12 +358,12 @@ impl BaseClient {
                                 ruma::events::room::message::MessageType::VerificationRequest(
                                     _,
                                 ) => {
-                                    self.handle_unencrypted_verification_event(e, room_id).await?;
+                                    self.handle_unencrypted_verification_event(e, room_id).await;
                                 }
                                 _ => (),
                             },
                             _ if e.event_type().to_string().starts_with("m.key.verification") => {
-                                self.handle_unencrypted_verification_event(e, room_id).await?;
+                                self.handle_unencrypted_verification_event(e, room_id).await;
                             }
                             _ => (),
                         },
@@ -370,7 +375,7 @@ impl BaseClient {
                     if let Some(context) = &mut push_context {
                         self.update_push_room_context(context, user_id, room_info, changes).await;
                     } else {
-                        push_context = self.get_push_room_context(room, room_info, changes).await?;
+                        push_context = self.get_push_room_context(room, room_info, changes).await;
                     }
 
                     if let Some(context) = &push_context {
@@ -406,7 +411,7 @@ impl BaseClient {
             timeline.events.push(event);
         }
 
-        Ok(timeline)
+        timeline
     }
 
     pub(crate) fn handle_invited_state(
@@ -469,7 +474,7 @@ impl BaseClient {
             room_info.handle_state_event(&event);
 
             if let AnySyncStateEvent::RoomMember(member) = event {
-                ambiguity_cache.handle_event(changes, &room_id, &member).await?;
+                ambiguity_cache.handle_event(changes, &room_id, &member).await;
 
                 match member.membership() {
                     MembershipState::Join | MembershipState::Invite => {
@@ -724,7 +729,7 @@ impl BaseClient {
                     &mut changes,
                     &mut ambiguity_cache,
                 )
-                .await?;
+                .await;
 
             self.handle_room_account_data(&room_id, &new_info.account_data.events, &mut changes)
                 .await;
@@ -792,7 +797,7 @@ impl BaseClient {
                     &mut changes,
                     &mut ambiguity_cache,
                 )
-                .await?;
+                .await;
 
             self.handle_room_account_data(&room_id, &new_info.account_data.events, &mut changes)
                 .await;
@@ -931,7 +936,7 @@ impl BaseClient {
 
                 let sync_member: SyncRoomMemberEvent = member.clone().into();
 
-                ambiguity_cache.handle_event(&changes, room_id, &sync_member).await?;
+                ambiguity_cache.handle_event(&changes, room_id, &sync_member).await;
 
                 if member.state_key() == member.sender() {
                     changes
@@ -1091,48 +1096,79 @@ impl BaseClient {
         room: &Room,
         room_info: &RoomInfo,
         changes: &StateChanges,
-    ) -> Result<Option<PushConditionRoomCtx>> {
+    ) -> Option<PushConditionRoomCtx> {
         let room_id = room.room_id();
         let user_id = room.own_user_id();
 
         let member_count = room_info.active_members_count();
 
-        // TODO: Use if let chain once stable
-        let user_display_name = if let Some(Ok(member)) = changes
-            .members
-            .get(room_id)
-            .and_then(|members| members.get(user_id))
-            .map(Raw::deserialize)
-        {
-            member
-                .as_original()
-                .and_then(|ev| ev.content.displayname.clone())
-                .unwrap_or_else(|| user_id.localpart().to_owned())
-        } else if let Some(member) = room.get_member(user_id).await? {
-            member.name().to_owned()
-        } else {
-            return Ok(None);
+        let get_display_name = async {
+            let display_name_from_changes = changes
+                .members
+                .get(room_id)
+                .and_then(|members| members.get(user_id))
+                .map(|event| event.deserialize().map_err(StoreError::backend))
+                .transpose()?
+                .map(|member| {
+                    member
+                        .as_original()
+                        .and_then(|ev| ev.content.displayname.clone())
+                        .unwrap_or_else(|| user_id.localpart().to_owned())
+                });
+
+            Ok::<_, Error>(match display_name_from_changes {
+                Some(name) => Some(name),
+                None => room.get_member(user_id).await?.map(|member| member.name().to_owned()),
+            })
         };
 
-        let room_power_levels = if let Some(event) = changes
-            .state
-            .get(room_id)
-            .and_then(|types| types.get(&StateEventType::RoomPowerLevels)?.get(""))
-            .and_then(|e| e.deserialize_as::<RoomPowerLevelsEvent>().ok())
-        {
-            event.power_levels()
-        } else if let Some(event) = self
-            .store
-            .get_state_event_static::<RoomPowerLevelsEventContent>(room_id)
-            .await?
-            .and_then(|e| e.deserialize().ok())
-        {
-            event.power_levels()
-        } else {
-            return Ok(None);
+        let user_display_name = match get_display_name.await {
+            Ok(Some(name)) => name,
+            Ok(None) => return None,
+            Err(e) => {
+                info!("Failed to get display name: {e}");
+                return None;
+            }
         };
 
-        Ok(Some(PushConditionRoomCtx {
+        let get_power_levels = async {
+            let power_levels_from_changes = changes
+                .state
+                .get(room_id)
+                .and_then(|types| {
+                    Some(
+                        types
+                            .get(&StateEventType::RoomPowerLevels)?
+                            .get("")?
+                            .deserialize_as::<RoomPowerLevelsEvent>()
+                            .map_err(StoreError::backend),
+                    )
+                })
+                .transpose()?
+                .map(|event| event.power_levels());
+
+            Ok::<_, Error>(match power_levels_from_changes {
+                Some(pls) => Some(pls),
+                None => self
+                    .store
+                    .get_state_event_static::<RoomPowerLevelsEventContent>(room_id)
+                    .await?
+                    .map(|e| e.deserialize().map_err(StoreError::backend))
+                    .transpose()?
+                    .map(|event| event.power_levels()),
+            })
+        };
+
+        let room_power_levels = match get_power_levels.await {
+            Ok(Some(pls)) => pls,
+            Ok(None) => return None,
+            Err(e) => {
+                info!("Failed to get power levels: {e}");
+                return None;
+            }
+        };
+
+        Some(PushConditionRoomCtx {
             user_id: user_id.to_owned(),
             room_id: room_id.to_owned(),
             member_count: UInt::new(member_count).unwrap_or(UInt::MAX),
@@ -1140,7 +1176,7 @@ impl BaseClient {
             users_power_levels: room_power_levels.users,
             default_power_level: room_power_levels.users_default,
             notification_power_levels: room_power_levels.notifications,
-        }))
+        })
     }
 
     /// Update the push context for the given room.

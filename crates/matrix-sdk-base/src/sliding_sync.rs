@@ -165,7 +165,7 @@ impl BaseClient {
                         &mut changes,
                         &mut ambiguity_cache,
                     )
-                    .await?;
+                    .await;
 
                 #[cfg(feature = "e2e-encryption")]
                 if room_info.is_encrypted() {
