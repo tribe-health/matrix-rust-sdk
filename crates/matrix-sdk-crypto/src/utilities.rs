@@ -138,7 +138,7 @@ where
         let mut lock = self.inner.write().unwrap();
 
         for item in iterator {
-            lock.remove(&item);
+            lock.remove(item);
         }
     }
 }
